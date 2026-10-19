@@ -60,25 +60,29 @@ if not target_data.empty:
     # 나이 라벨 (0세 ~ 100세 이상)
     age_labels = [f"{i}세" for i in range(100)] + ["100세 이상"]
 
-    # 연령별 인구 및 나이 숫자로 분리 (지표 계산용)
-    male_pop = [int(row[f"남_{age}"]) for age in age_labels]
-    female_pop = [int(row[f"여_{age}"]) for age in age_labels]
+    # 결측치(NaN)나 실수 입력을 안전하게 정수(int)로 변환하는 함수
+    def safe_int(val):
+        try:
+            return int(pd.to_numeric(val, errors="coerce") or 0)
+        except Exception:
+            return 0
+
+    # 연령별 인구 및 나이 숫자로 분리
+    male_pop = [safe_int(row.get(f"남_{age}", 0)) for age in age_labels]
+    female_pop = [safe_int(row.get(f"여_{age}", 0)) for age in age_labels]
     total_pop_by_age = [m + f for m, f in zip(male_pop, female_pop)]
 
     # 주요 지표 계산
     total_pop = sum(total_pop_by_age)
 
     if total_pop > 0:
-        # 평균연령 계산 (100세 이상은 100세로 계산)
         ages = list(range(100)) + [100]
         weighted_sum = sum(age * pop for age, pop in zip(ages, total_pop_by_age))
         avg_age = weighted_sum / total_pop
 
-        # 고령화율 (65세 이상 비율) 계산
         elderly_pop = sum(total_pop_by_age[65:])
         aging_rate = (elderly_pop / total_pop) * 100
 
-        # 유소년 (0~14세) 비율 계산 (한 줄 설명용)
         youth_pop = sum(total_pop_by_age[:15])
         youth_rate = (youth_pop / total_pop) * 100
     else:
@@ -92,14 +96,13 @@ if not target_data.empty:
     m_col1.metric("총인구", f"{total_pop:,} 명")
     m_col2.metric("평균연령", f"{avg_age:.1f} 세")
 
-    # 고령화율 20% 이상이면 주의 표시(⚠️ 초고령) 추가
     aging_label = "고령화율 (65세+)"
     if aging_rate >= 20.0:
         aging_label += " ⚠️ 초고령"
 
     m_col3.metric(aging_label, f"{aging_rate:.1f} %")
 
-    st.write("")  # 여백
+    st.write("")
 
     # 5. Plotly 가로 막대그래프 (인구 피라미드)
     male_pop_neg = [-val for val in male_pop]
@@ -152,7 +155,7 @@ if not target_data.empty:
             title="나이",
             type="category",
             categoryorder="array",
-            categoryarray=age_labels,  # 0세부터 100세 이상까지 순서 고정
+            categoryarray=age_labels,
             dtick=10,
         ),
         height=700,
@@ -166,4 +169,15 @@ if not target_data.empty:
     # 6. 피라미드 하단 한 줄 자동 설명
     st.markdown("---")
     if aging_rate >= 20.0 and youth_rate < 10.0:
-        summary_text = f"👵👴 **{selected_dong}**은 어르신(65세 이상 {aging_rate:.1f}%) 비율이 눈에 띄게 높고, 아이들 비율은 낮아 고령화
+        summary_text = f"👵👴 **{selected_dong}**은 어르신(65세 이상 {aging_rate:.1f}%) 비율이 눈에 띄게 높고, 아이들 비율은 낮아 고령화가 꽤 진행된 동네예요."
+    elif youth_rate >= 15.0:
+        summary_text = f"👶🎈 **{selected_dong}**은 아이들(0~14세 {youth_rate:.1f}%)과 젊은 세대가 비교적 많이 거주하는 활기찬 동네예요!"
+    elif aging_rate >= 14.0:
+        summary_text = f"🏡 **{selected_dong}**은 어르신 비율이 {aging_rate:.1f}%로 고령사회에 접어들었으며, 전반적으로 완만한 인구 구조를 보이고 있어요."
+    else:
+        summary_text = f"🌱 **{selected_dong}**은 청장년층과 어르신, 아이들이 균형 있게 아우러져 사는 동네예요."
+
+    st.info(summary_text)
+
+else:
+    st.warning("선택한 지역의 인구 데이터가 존재하지 않습니다.")
